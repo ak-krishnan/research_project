@@ -1,0 +1,13 @@
+streamlit
+gitpython
+langchain
+langchain-community
+langchain-groq
+langchain-text-splitters
+chromadb
+sentence-transformers
+semgrep
+langchain-openai
+langchain-google-genai
+torchvision
+faiss-cpu

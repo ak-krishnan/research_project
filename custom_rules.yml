@@ -1,0 +1,154 @@
+rules:
+  # ============================================================
+  # Original Rules
+  # ============================================================
+  - id: streamlit-unsafe-allow-html
+    patterns:
+      - pattern: st.markdown(..., unsafe_allow_html=True)
+    message: "Using unsafe_allow_html=True in Streamlit can lead to Cross-Site Scripting (XSS) if user input is passed."
+    severity: ERROR
+    languages:
+      - python
+
+  - id: gitpython-repo-clone-injection
+    patterns:
+      - pattern: Repo.clone_from(..., ...)
+    message: "GitPython's Repo.clone_from can lead to Command Injection or Local File Read if the URL parameter is not sanitized."
+    severity: ERROR
+    languages:
+      - python
+
+  - id: hardcoded-gemini-api-key
+    patterns:
+      - pattern-regex: "AIza[0-9A-Za-z-_]{35}"
+    message: "Hardcoded Google Gemini API key detected. Keys should be provided securely via environment variables."
+    severity: ERROR
+    languages:
+      - python
+
+  # ============================================================
+  # NEW: Juice Shop / OWASP Specific Rules
+  # ============================================================
+
+  # Mass Assignment: req.body spread directly into ORM create/update
+  - id: express-mass-assignment
+    patterns:
+      - pattern: $MODEL.create(req.body)
+      - pattern: $MODEL.create({...req.body})
+      - pattern: $MODEL.update(req.body, ...)
+      - pattern: $MODEL.build(req.body)
+      - pattern: $MODEL.create({...req.body, ...})
+    message: >
+      Mass Assignment vulnerability: User-controlled req.body is passed directly
+      to an ORM model method without explicit field whitelisting. An attacker can
+      inject unexpected fields (e.g., 'role: admin') to escalate privileges.
+      OWASP: Improper Input Validation / A08:2021 Software and Data Integrity Failures.
+    severity: ERROR
+    languages:
+      - typescript
+      - javascript
+
+  # Zip Slip / Arbitrary File Write via archive extraction
+  - id: zip-slip-arbitrary-write
+    patterns:
+      - pattern: |
+          $ENTRY.pipe(fs.createWriteStream($PATH))
+    message: >
+      Zip Slip vulnerability: Archive entry is piped to a createWriteStream without
+      adequate path validation. An attacker can craft a zip with entries like
+      '../../target' to overwrite arbitrary files on the server.
+      OWASP: A06:2021 Vulnerable and Outdated Components.
+    severity: ERROR
+    languages:
+      - typescript
+      - javascript
+  
+  # Alternative zip slip pattern
+  - id: zip-slip-path-join
+    patterns:
+      - pattern: |
+          $PATH = path.resolve($PREFIX + $ENTRY_PATH)
+          ...
+          $ENTRY.pipe(fs.createWriteStream(...))
+    message: >
+      Potential Zip Slip: Archive entry path is concatenated with a prefix and resolved,
+      but the resolved path may escape the intended directory if the entry contains
+      traversal sequences. Validate that the resolved path stays within the target directory.
+      OWASP: A06:2021 Vulnerable and Outdated Components.
+    severity: WARNING
+    languages:
+      - typescript
+      - javascript
+
+  # Excessive Data Exposure: returning full model without field selection
+  - id: excessive-data-exposure-user
+    patterns:
+      - pattern: |
+          user?.data[$FIELD]
+    message: >
+      Potential Excessive Data Exposure: Accessing user data fields dynamically
+      without an explicit allowlist may leak sensitive fields (e.g., password hash,
+      TOTP secret). Use an explicit allowlist of safe fields.
+      OWASP: A01:2021 Broken Access Control / Excessive Data Exposure.
+    severity: WARNING
+    languages:
+      - typescript
+      - javascript
+
+  # Unsafe YAML load (can lead to deserialization attacks)
+  - id: unsafe-yaml-load
+    patterns:
+      - pattern: yaml.load($DATA)
+    message: >
+      Unsafe YAML deserialization: yaml.load() without specifying a safe schema
+      can execute arbitrary code via YAML deserialization attacks.
+      Use yaml.load(data, { schema: yaml.SAFE_SCHEMA }) or yaml.safeLoad() instead.
+      OWASP: A08:2021 Software and Data Integrity Failures.
+    severity: ERROR
+    languages:
+      - typescript
+      - javascript
+
+  # Hardcoded cryptographic secrets/seeds
+  - id: hardcoded-crypto-secret
+    patterns:
+      - pattern-regex: "(mnemonic|seed|private.?key|secret.?key|passphrase)\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+    message: >
+      Hardcoded cryptographic secret detected (mnemonic phrase, seed, or private key).
+      Secrets must be stored in environment variables or a secure vault, never in source code.
+      OWASP: A02:2021 Cryptographic Failures / Sensitive Data Exposure.
+    severity: ERROR
+    languages:
+      - typescript
+      - javascript
+      - json
+      - yaml
+
+  # Unsafe noent XML parsing (XXE)
+  - id: xxe-noent-parsing
+    patterns:
+      - pattern: |
+          libxml.parseXml($DATA, {noent: true, ...})
+    message: >
+      XXE vulnerability: XML parsing with noent:true enables external entity
+      expansion, allowing attackers to read files from the server or perform SSRF.
+      Disable external entity processing by setting noent:false.
+      OWASP: A05:2021 Security Misconfiguration.
+    severity: ERROR
+    languages:
+      - typescript
+      - javascript
+
+  # Weak security question (predictable answers)
+  - id: weak-security-question
+    patterns:
+      - pattern-regex: "security.?[Qq]uestion|securityAnswer|forgot.?[Pp]assword"
+    message: >
+      Security question mechanism detected. Security questions with easily guessable
+      or publicly discoverable answers (e.g., pet names, favorite movies) enable
+      account takeover via password reset.
+      OWASP: A07:2021 Identification and Authentication Failures.
+    severity: WARNING
+    languages:
+      - typescript
+      - javascript
